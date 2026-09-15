@@ -1,5 +1,6 @@
 import Profile from "../models/Profile.js";
 import User from "../models/User.js";
+import mongoose from "mongoose";
 
 // ============================================================
 // HELPERS
@@ -1403,6 +1404,140 @@ export const getDiscoverProfiles = async (req, res) => {
       success: false,
       message:
         "Unable to load discovery profiles.",
+    });
+  }
+};
+
+
+
+// ============================================================
+// GET PUBLIC PROFILE BY ID
+// ============================================================
+
+export const getPublicProfileById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile ID is required",
+      });
+    }
+
+    const profile = await Profile.findById(id).populate({
+      path: "user",
+      select: "name isEmailVerified profileCompleted",
+    });
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not found",
+      });
+    }
+
+    if (!profile.isDiscoverable) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile not available",
+      });
+    }
+
+    const calculateAge = (dateOfBirth) => {
+      if (!dateOfBirth) {
+        return 0;
+      }
+
+      const today = new Date();
+      const birthDate = new Date(dateOfBirth);
+
+      let age =
+        today.getFullYear() -
+        birthDate.getFullYear();
+
+      const monthDifference =
+        today.getMonth() -
+        birthDate.getMonth();
+
+      if (
+        monthDifference < 0 ||
+        (
+          monthDifference === 0 &&
+          today.getDate() < birthDate.getDate()
+        )
+      ) {
+        age--;
+      }
+
+      return age;
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        profile: {
+          id: profile._id.toString(),
+
+          user:
+            profile.user?._id?.toString() || "",
+
+          name:
+            profile.user?.name || "Vibe User",
+
+          age: calculateAge(
+            profile.dateOfBirth
+          ),
+
+          gender: profile.gender,
+
+          interestedIn:
+            profile.interestedIn,
+
+          bio:
+            profile.bio || "",
+
+          description:
+            profile.description || "",
+
+          interests:
+            profile.interests || [],
+
+          photos:
+            profile.photos || [],
+
+          primaryPhoto:
+            profile.photos?.[0] || null,
+
+          datingIntention:
+            profile.datingIntention || "",
+
+          prompts:
+            profile.prompts || [],
+
+          isVerified:
+            profile.isVerified || false,
+
+          lastActiveAt:
+            profile.lastActiveAt,
+
+          createdAt:
+            profile.createdAt,
+
+          updatedAt:
+            profile.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Get public profile error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load profile",
     });
   }
 };

@@ -6,6 +6,7 @@ import {
   updateProfile,
   updateLastActive,
   getDiscoverProfiles,
+  getPublicProfileById,
 } from "../controllers/profile.controller.js";
 
 import protect from "../middleware/auth.middleware.js";
@@ -65,6 +66,12 @@ router.get(
   "/discover",
   protect,
   getDiscoverProfiles
+);
+
+router.get(
+  "/:id",
+  protect,
+  getPublicProfileById
 );
 
 export default router;
