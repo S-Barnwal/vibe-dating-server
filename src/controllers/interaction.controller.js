@@ -16,20 +16,28 @@ const createInteraction = async (req, res) => {
     if (!toUserId) {
       return res.status(400).json({
         success: false,
-        message: "Target user is required",
+        message: "Target profile is required",
       });
     }
 
-    if (fromUserId.toString() === toUserId.toString()) {
-      return res.status(400).json({
-        success: false,
-        message: "You cannot interact with yourself",
-      });
+    /*
+     * Discover frontend currently sends profile.id.
+     * To keep the API flexible, first try Profile._id,
+     * then try Profile.user.
+     */
+    let targetProfile = null;
+
+    // First: treat toUserId as Profile ID
+    if (toUserId.match(/^[0-9a-fA-F]{24}$/)) {
+      targetProfile = await Profile.findById(toUserId);
     }
 
-    const targetProfile = await Profile.findOne({
-      user: toUserId,
-    });
+    // Second: treat toUserId as User ID
+    if (!targetProfile) {
+      targetProfile = await Profile.findOne({
+        user: toUserId,
+      });
+    }
 
     if (!targetProfile) {
       return res.status(404).json({
@@ -38,22 +46,48 @@ const createInteraction = async (req, res) => {
       });
     }
 
-    const interaction = await Interaction.findOneAndUpdate(
-      {
-        fromUser: fromUserId,
-        toUser: toUserId,
-      },
-      {
-        fromUser: fromUserId,
-        toUser: toUserId,
-        type: req.interactionType,
-      },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-      }
-    );
+    /*
+     * Interaction collection should always store User IDs,
+     * not Profile IDs.
+     */
+    const targetUserId = targetProfile.user;
+
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Target user is not linked to this profile",
+      });
+    }
+
+    // Prevent interacting with yourself
+    if (
+      fromUserId.toString() ===
+      targetUserId.toString()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot interact with yourself",
+      });
+    }
+
+    const interaction =
+      await Interaction.findOneAndUpdate(
+        {
+          fromUser: fromUserId,
+          toUser: targetUserId,
+        },
+        {
+          fromUser: fromUserId,
+          toUser: targetUserId,
+          type: req.interactionType,
+        },
+        {
+          new: true,
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        }
+      );
 
     const message =
       req.interactionType === "like"
@@ -67,8 +101,8 @@ const createInteraction = async (req, res) => {
       message,
       data: {
         interaction: {
-          id: interaction._id,
-          toUser: interaction.toUser,
+          id: interaction._id.toString(),
+          toUser: targetUserId.toString(),
           type: interaction.type,
           createdAt: interaction.createdAt,
           updatedAt: interaction.updatedAt,
@@ -76,7 +110,10 @@ const createInteraction = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Interaction error:", error);
+    console.error(
+      "Interaction error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -87,15 +124,18 @@ const createInteraction = async (req, res) => {
 
 export const likeProfile = async (req, res) => {
   req.interactionType = "like";
+
   return createInteraction(req, res);
 };
 
 export const passProfile = async (req, res) => {
   req.interactionType = "pass";
+
   return createInteraction(req, res);
 };
 
 export const superlikeProfile = async (req, res) => {
   req.interactionType = "superlike";
+
   return createInteraction(req, res);
 };
