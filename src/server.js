@@ -17,7 +17,15 @@ const PORT = process.env.PORT || 5000;
 connectDB();
 connectCloudinary();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: false,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
