@@ -3,8 +3,15 @@ import Profile from "../models/Profile.js";
 
 const createInteraction = async (req, res) => {
   try {
-    const fromUserId = req.user._id;
+    const fromUserId = req.userId;
     const { toUserId } = req.body;
+
+    if (!fromUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authenticated user not found",
+      });
+    }
 
     if (!toUserId) {
       return res.status(400).json({

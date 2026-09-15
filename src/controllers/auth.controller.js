@@ -470,6 +470,14 @@ export const login = async (req, res) => {
       });
     }
 
+
+    console.log(
+  "LOGIN USER:",
+  user.email,
+  "profileCompleted:",
+  user.profileCompleted
+);
+
     // -------------------------------------------------
     // EMAIL VERIFICATION
     // -------------------------------------------------
