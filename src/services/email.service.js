@@ -1,22 +1,22 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
-const getTransporter = () => {
-  const emailUser = process.env.EMAIL_USER;
-  const emailPass = process.env.EMAIL_PASS;
+const getResend = () => {
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!emailUser || !emailPass) {
+  if (!apiKey) {
     throw new Error(
-      "EMAIL_USER or EMAIL_PASS is missing from environment variables"
+      "RESEND_API_KEY is missing from environment variables"
     );
   }
 
-  return nodemailer.createTransport({
-    service: "Gmail",
-    auth: {
-      user: emailUser,
-      pass: emailPass,
-    },
-  });
+  return new Resend(apiKey);
+};
+
+const getFromEmail = () => {
+  return (
+    process.env.RESEND_FROM_EMAIL ||
+    "Vibe <onboarding@resend.dev>"
+  );
 };
 
 
@@ -28,10 +28,10 @@ export const sendPasswordResetOtp = async ({
   email,
   otp,
 }) => {
-  const transporter = getTransporter();
+  const resend = getResend();
 
-  await transporter.sendMail({
-    from: `"Vibe" <${process.env.EMAIL_USER}>`,
+  const { data, error } = await resend.emails.send({
+    from: getFromEmail(),
     to: email,
     subject: "Your Vibe password reset code",
 
@@ -87,6 +87,13 @@ export const sendPasswordResetOtp = async ({
       </div>
     `,
   });
+
+  if (error) {
+    console.error("Password reset email error:", error);
+    throw new Error(error.message || "Unable to send password reset email");
+  }
+
+  return data;
 };
 
 
@@ -98,10 +105,10 @@ export const sendEmailVerificationOtp = async ({
   email,
   otp,
 }) => {
-  const transporter = getTransporter();
+  const resend = getResend();
 
-  await transporter.sendMail({
-    from: `"Vibe" <${process.env.EMAIL_USER}>`,
+  const { data, error } = await resend.emails.send({
+    from: getFromEmail(),
     to: email,
     subject: "Verify your Vibe email 💜",
 
@@ -160,4 +167,11 @@ export const sendEmailVerificationOtp = async ({
       </div>
     `,
   });
+
+  if (error) {
+    console.error("Email verification error:", error);
+    throw new Error(error.message || "Unable to send verification email");
+  }
+
+  return data;
 };
