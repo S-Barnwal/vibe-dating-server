@@ -18,6 +18,38 @@ import {
   sendEmailVerificationOtp,
 } from "../services/email.service.js";
 
+// =====================================================
+// HELPERS
+// =====================================================
+
+const isEmailVerificationRequired = () => {
+  return (
+    String(
+      process.env.REQUIRE_EMAIL_VERIFICATION || "false"
+    ).toLowerCase() === "true"
+  );
+};
+
+const createToken = (userId) => {
+  return jwt.sign(
+    {
+      userId: userId.toString(),
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn:
+        process.env.JWT_EXPIRES_IN || "7d",
+    }
+  );
+};
+
+const formatUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  isEmailVerified: user.isEmailVerified,
+  profileCompleted: user.profileCompleted,
+});
 
 // =====================================================
 // SIGNUP
@@ -50,6 +82,10 @@ export const signup = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedName = name.trim();
 
+    // -------------------------------------------------
+    // CHECK EXISTING USER
+    // -------------------------------------------------
+
     const existingUser = await User.findOne({
       email: normalizedEmail,
     });
@@ -61,12 +97,51 @@ export const signup = async (req, res) => {
       });
     }
 
+    // -------------------------------------------------
+    // HASH PASSWORD
+    // -------------------------------------------------
+
     const hashedPassword = await bcrypt.hash(
       password,
       12
     );
 
-    // Generate 6-digit email verification OTP
+    // -------------------------------------------------
+    // DEVELOPMENT MODE
+    // -------------------------------------------------
+    //
+    // REQUIRE_EMAIL_VERIFICATION=false
+    //
+    // User can signup and login immediately.
+    // No email provider/domain required.
+    //
+    // -------------------------------------------------
+
+    if (!isEmailVerificationRequired()) {
+      const user = await User.create({
+        name: normalizedName,
+        email: normalizedEmail,
+        password: hashedPassword,
+        isEmailVerified: true,
+        profileCompleted: false,
+      });
+
+      const token = createToken(user._id);
+
+      return res.status(201).json({
+        success: true,
+        message: "Account created successfully",
+        data: {
+          user: formatUser(user),
+          token,
+        },
+      });
+    }
+
+    // -------------------------------------------------
+    // EMAIL VERIFICATION MODE
+    // -------------------------------------------------
+
     const emailVerificationOtp = Math.floor(
       100000 + Math.random() * 900000
     ).toString();
@@ -78,14 +153,15 @@ export const signup = async (req, res) => {
       name: normalizedName,
       email: normalizedEmail,
       password: hashedPassword,
-
       isEmailVerified: false,
-
       emailVerificationOtp,
       emailVerificationOtpExpiresAt,
     });
 
-    // Send verification OTP to user's email
+    // -------------------------------------------------
+    // SEND EMAIL OTP
+    // -------------------------------------------------
+
     try {
       await sendEmailVerificationOtp({
         email: normalizedEmail,
@@ -97,7 +173,6 @@ export const signup = async (req, res) => {
         emailError
       );
 
-      // Remove account if verification email could not be sent
       await User.findByIdAndDelete(user._id);
 
       return res.status(500).json({
@@ -107,29 +182,14 @@ export const signup = async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      {
-        userId: user._id.toString(),
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn:
-          process.env.JWT_EXPIRES_IN || "7d",
-      }
-    );
+    const token = createToken(user._id);
 
     return res.status(201).json({
       success: true,
       message:
         "Account created successfully. Please verify your email",
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          isEmailVerified: user.isEmailVerified,
-          profileCompleted: user.profileCompleted,
-        },
+        user: formatUser(user),
         token,
       },
     });
@@ -143,7 +203,6 @@ export const signup = async (req, res) => {
     });
   }
 };
-
 
 // =====================================================
 // VERIFY EMAIL OTP
@@ -222,10 +281,7 @@ export const verifyEmailOtp = async (req, res) => {
       });
     }
 
-    // Mark email as verified
     user.isEmailVerified = true;
-
-    // Clear OTP after successful verification
     user.emailVerificationOtp = undefined;
     user.emailVerificationOtpExpiresAt = undefined;
 
@@ -235,13 +291,7 @@ export const verifyEmailOtp = async (req, res) => {
       success: true,
       message: "Email verified successfully",
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          isEmailVerified: user.isEmailVerified,
-          profileCompleted: user.profileCompleted,
-        },
+        user: formatUser(user),
       },
     });
   } catch (error) {
@@ -258,7 +308,6 @@ export const verifyEmailOtp = async (req, res) => {
   }
 };
 
-
 // =====================================================
 // RESEND EMAIL VERIFICATION OTP
 // =====================================================
@@ -272,7 +321,6 @@ export const resendEmailOtp = async (req, res) => {
       otp: "000000",
     });
 
-    // Only use email validation here
     delete errors.otp;
 
     if (Object.keys(errors).length > 0) {
@@ -280,6 +328,18 @@ export const resendEmailOtp = async (req, res) => {
         success: false,
         message: "Please fix the validation errors",
         errors,
+      });
+    }
+
+    // -------------------------------------------------
+    // If verification is disabled, no OTP is required.
+    // -------------------------------------------------
+
+    if (!isEmailVerificationRequired()) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "Email verification is disabled in development mode",
       });
     }
 
@@ -291,9 +351,6 @@ export const resendEmailOtp = async (req, res) => {
       "+emailVerificationOtp +emailVerificationOtpExpiresAt"
     );
 
-    /*
-     * Don't reveal whether an account exists.
-     */
     if (!user) {
       return res.status(200).json({
         success: true,
@@ -359,7 +416,6 @@ export const resendEmailOtp = async (req, res) => {
   }
 };
 
-
 // =====================================================
 // LOGIN
 // =====================================================
@@ -383,6 +439,10 @@ export const login = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
+    // -------------------------------------------------
+    // FIND USER BY ENTERED EMAIL
+    // -------------------------------------------------
+
     const user = await User.findOne({
       email: normalizedEmail,
     }).select("+password");
@@ -393,6 +453,10 @@ export const login = async (req, res) => {
         message: "Invalid email or password",
       });
     }
+
+    // -------------------------------------------------
+    // CHECK PASSWORD
+    // -------------------------------------------------
 
     const isPasswordCorrect = await bcrypt.compare(
       password,
@@ -406,54 +470,47 @@ export const login = async (req, res) => {
       });
     }
 
-    // =================================================
-    // EMAIL VERIFICATION CHECK
-    // =================================================
+    // -------------------------------------------------
+    // EMAIL VERIFICATION
+    // -------------------------------------------------
 
-    if (!user.isEmailVerified) {
+    if (
+      isEmailVerificationRequired() &&
+      !user.isEmailVerified
+    ) {
       return res.status(403).json({
         success: false,
         message:
           "Please verify your email before logging in",
         code: "EMAIL_NOT_VERIFIED",
         data: {
-          user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            isEmailVerified: user.isEmailVerified,
-            profileCompleted: user.profileCompleted,
-          },
+          user: formatUser(user),
         },
       });
     }
 
-    // =================================================
-    // CREATE JWT
-    // =================================================
+    // -------------------------------------------------
+    // UPDATE VERIFIED STATUS IN DEVELOPMENT MODE
+    // -------------------------------------------------
 
-    const token = jwt.sign(
-      {
-        userId: user._id.toString(),
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn:
-          process.env.JWT_EXPIRES_IN || "7d",
+    if (!isEmailVerificationRequired()) {
+      if (!user.isEmailVerified) {
+        user.isEmailVerified = true;
+        await user.save();
       }
-    );
+    }
+
+    // -------------------------------------------------
+    // CREATE JWT
+    // -------------------------------------------------
+
+    const token = createToken(user._id);
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          isEmailVerified: user.isEmailVerified,
-          profileCompleted: user.profileCompleted,
-        },
+        user: formatUser(user),
         token,
       },
     });
@@ -486,20 +543,11 @@ export const getMe = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          isEmailVerified: user.isEmailVerified,
-          profileCompleted: user.profileCompleted,
-        },
+        user: formatUser(user),
       },
     });
   } catch (error) {
-    console.error(
-      "Get me error:",
-      error
-    );
+    console.error("Get me error:", error);
 
     return res.status(500).json({
       success: false,
@@ -508,7 +556,6 @@ export const getMe = async (req, res) => {
     });
   }
 };
-
 
 // =====================================================
 // CHANGE PASSWORD
@@ -559,8 +606,10 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    const hashedPassword =
-      await bcrypt.hash(newPassword, 12);
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      12
+    );
 
     user.password = hashedPassword;
 
@@ -568,8 +617,7 @@ export const changePassword = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        "Password changed successfully",
+      message: "Password changed successfully",
     });
   } catch (error) {
     console.error(
@@ -584,7 +632,6 @@ export const changePassword = async (req, res) => {
     });
   }
 };
-
 
 // =====================================================
 // FORGOT PASSWORD
@@ -601,8 +648,7 @@ export const forgotPassword = async (req, res) => {
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please fix the validation errors",
+        message: "Please fix the validation errors",
         errors,
       });
     }
@@ -619,6 +665,7 @@ export const forgotPassword = async (req, res) => {
     /*
      * Don't reveal whether the email exists.
      */
+
     if (!user) {
       return res.status(200).json({
         success: true,
@@ -666,7 +713,6 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-
 // =====================================================
 // VERIFY PASSWORD RESET OTP
 // =====================================================
@@ -683,8 +729,7 @@ export const verifyResetOtp = async (req, res) => {
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please fix the validation errors",
+        message: "Please fix the validation errors",
         errors,
       });
     }
@@ -737,8 +782,7 @@ export const verifyResetOtp = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        "OTP verified successfully",
+      message: "OTP verified successfully",
     });
   } catch (error) {
     console.error(
@@ -753,7 +797,6 @@ export const verifyResetOtp = async (req, res) => {
     });
   }
 };
-
 
 // =====================================================
 // RESET PASSWORD
@@ -776,8 +819,7 @@ export const resetPassword = async (req, res) => {
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please fix the validation errors",
+        message: "Please fix the validation errors",
         errors,
       });
     }
@@ -806,15 +848,16 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    const hashedPassword =
-      await bcrypt.hash(newPassword, 12);
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      12
+    );
 
     user.password = hashedPassword;
 
     // Invalidate reset flow
     user.passwordResetOtp = undefined;
-    user.passwordResetOtpExpiresAt =
-      undefined;
+    user.passwordResetOtpExpiresAt = undefined;
     user.passwordResetVerified = false;
 
     await user.save();
