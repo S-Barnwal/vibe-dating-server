@@ -7,6 +7,7 @@ import {
   updateLastActive,
   getDiscoverProfiles,
   getPublicProfileById,
+  getBecauseYouLikeProfiles,
 } from "../controllers/profile.controller.js";
 
 import protect from "../middleware/auth.middleware.js";
@@ -66,6 +67,12 @@ router.get(
   "/discover",
   protect,
   getDiscoverProfiles
+);
+
+router.get(
+  "/because-you-like",
+  protect,
+  getBecauseYouLikeProfiles
 );
 
 router.get(
