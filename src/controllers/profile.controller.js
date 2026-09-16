@@ -1776,3 +1776,94 @@ export const getBecauseYouLikeProfiles = async (
     });
   }
 };
+
+
+
+export const getNewHereProfiles = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    const viewerProfile = await Profile.findOne({
+      user: userId,
+    }).lean();
+
+    if (!viewerProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Complete your profile first.",
+      });
+    }
+
+    const profiles = await Profile.find({
+      user: {
+        $ne: userId,
+      },
+
+      isDiscoverable: true,
+    })
+      .populate({
+        path: "user",
+        select: "name isEmailVerified profileCompleted",
+        match: {
+          profileCompleted: true,
+        },
+      })
+      .sort({
+        createdAt: -1,
+      })
+      .limit(20)
+      .lean();
+
+    const completedProfiles = profiles.filter(
+      (profile) => profile.user
+    );
+
+    const publicProfiles = completedProfiles.map(
+      (profile) => {
+        let distanceKm = null;
+
+        if (
+          viewerProfile.location &&
+          profile.location
+        ) {
+          distanceKm = calculateDistanceKm(
+            viewerProfile.location.latitude,
+            viewerProfile.location.longitude,
+            profile.location.latitude,
+            profile.location.longitude
+          );
+        }
+
+        return formatPublicProfile(
+          profile,
+          distanceKm
+        );
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        profiles: publicProfiles,
+        count: publicProfiles.length,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "New here error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to load new profiles.",
+    });
+  }
+};

@@ -8,6 +8,7 @@ import {
   getDiscoverProfiles,
   getPublicProfileById,
   getBecauseYouLikeProfiles,
+  getNewHereProfiles,
 } from "../controllers/profile.controller.js";
 
 import protect from "../middleware/auth.middleware.js";
@@ -67,6 +68,12 @@ router.get(
   "/discover",
   protect,
   getDiscoverProfiles
+);
+
+router.get(
+  "/new-here",
+  protect,
+  getNewHereProfiles
 );
 
 router.get(
