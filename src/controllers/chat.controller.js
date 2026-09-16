@@ -4,6 +4,13 @@ import Match from "../models/Match.js";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import Profile from "../models/Profile.js";
+import Block from "../models/Block.js";
+
+/*
+ * ==========================================
+ * CALCULATE AGE
+ * ==========================================
+ */
 
 const calculateAge = (dateOfBirth) => {
     if (!dateOfBirth) {
@@ -32,6 +39,12 @@ const calculateAge = (dateOfBirth) => {
     return age;
 };
 
+/*
+ * ==========================================
+ * CHECK MATCH
+ * ==========================================
+ */
+
 const areUsersMatched = async (
     userId,
     otherUserId
@@ -57,6 +70,39 @@ const areUsersMatched = async (
     return match;
 };
 
+/*
+ * ==========================================
+ * CHECK BLOCK
+ * ==========================================
+ *
+ * Returns the block if either user has
+ * blocked the other.
+ */
+
+const getBlockBetweenUsers = async (
+    userId,
+    otherUserId
+) => {
+    return Block.findOne({
+        $or: [
+            {
+                blocker: userId,
+                blocked: otherUserId,
+            },
+            {
+                blocker: otherUserId,
+                blocked: userId,
+            },
+        ],
+    }).lean();
+};
+
+/*
+ * ==========================================
+ * CREATE / GET CONVERSATION
+ * ==========================================
+ */
+
 const getOrCreateConversation = async (
     userId,
     otherUserId
@@ -64,7 +110,10 @@ const getOrCreateConversation = async (
     let conversation =
         await Conversation.findOne({
             participants: {
-                $all: [userId, otherUserId],
+                $all: [
+                    userId,
+                    otherUserId,
+                ],
             },
         });
 
@@ -121,7 +170,8 @@ export const getConversation = async (
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid user ID.",
+                message:
+                    "Invalid user ID.",
             });
         }
 
@@ -141,6 +191,26 @@ export const getConversation = async (
                 success: false,
                 message:
                     "You can only chat with your matches.",
+            });
+        }
+
+        /*
+         * ========================================
+         * CHECK BLOCK
+         * ========================================
+         */
+
+        const block =
+            await getBlockBetweenUsers(
+                userId,
+                otherUserId
+            );
+
+        if (block) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "This conversation is unavailable because one of you has blocked the other.",
             });
         }
 
@@ -210,12 +280,9 @@ export const getConversation = async (
             success: true,
 
             data: {
-                /*
-                 * Matched user's profile
-                 */
-
                 otherUser: {
-                    id: otherProfile.user._id.toString(),
+                    id:
+                        otherProfile.user._id.toString(),
 
                     profileId:
                         otherProfile._id.toString(),
@@ -267,10 +334,6 @@ export const getConversation = async (
                         [],
                 },
 
-                /*
-                 * Conversation information
-                 */
-
                 conversation: {
                     id:
                         conversation._id.toString(),
@@ -281,10 +344,6 @@ export const getConversation = async (
                                 participant.toString()
                         ),
                 },
-
-                /*
-                 * Messages
-                 */
 
                 messages:
                     messages.map((message) => ({
@@ -440,6 +499,26 @@ export const searchMessages = async (
 
         /*
          * ========================================
+         * CHECK BLOCK
+         * ========================================
+         */
+
+        const block =
+            await getBlockBetweenUsers(
+                userId,
+                otherUserId
+            );
+
+        if (block) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "This conversation is unavailable because one of you has blocked the other.",
+            });
+        }
+
+        /*
+         * ========================================
          * FIND CONVERSATION
          * ========================================
          */
@@ -578,6 +657,12 @@ export const sendMessage = async (
 
         const { text } = req.body;
 
+        /*
+         * ========================================
+         * AUTHENTICATION
+         * ========================================
+         */
+
         if (!userId) {
             return res.status(401).json({
                 success: false,
@@ -585,6 +670,12 @@ export const sendMessage = async (
                     "Authentication required.",
             });
         }
+
+        /*
+         * ========================================
+         * VALIDATE RECEIVER
+         * ========================================
+         */
 
         if (!receiverId) {
             return res.status(400).json({
@@ -605,6 +696,12 @@ export const sendMessage = async (
                     "Invalid receiver ID.",
             });
         }
+
+        /*
+         * ========================================
+         * VALIDATE MESSAGE
+         * ========================================
+         */
 
         if (
             typeof text !== "string" ||
@@ -627,6 +724,12 @@ export const sendMessage = async (
                     "Message cannot exceed 1000 characters.",
             });
         }
+
+        /*
+         * ========================================
+         * SELF MESSAGE CHECK
+         * ========================================
+         */
 
         if (
             userId.toString() ===
@@ -655,6 +758,26 @@ export const sendMessage = async (
                 success: false,
                 message:
                     "You can only message your matches.",
+            });
+        }
+
+        /*
+         * ========================================
+         * CHECK BLOCK
+         * ========================================
+         */
+
+        const block =
+            await getBlockBetweenUsers(
+                userId,
+                receiverId
+            );
+
+        if (block) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Messaging is unavailable because one of you has blocked the other.",
             });
         }
 
@@ -777,6 +900,12 @@ export const markMessagesAsRead = async (
             userId: otherUserId,
         } = req.params;
 
+        /*
+         * ========================================
+         * AUTHENTICATION
+         * ========================================
+         */
+
         if (!userId) {
             return res.status(401).json({
                 success: false,
@@ -784,6 +913,12 @@ export const markMessagesAsRead = async (
                     "Authentication required.",
             });
         }
+
+        /*
+         * ========================================
+         * VALIDATE OTHER USER
+         * ========================================
+         */
 
         if (!otherUserId) {
             return res.status(400).json({
@@ -821,6 +956,26 @@ export const markMessagesAsRead = async (
                 success: false,
                 message:
                     "You can only access messages from your matches.",
+            });
+        }
+
+        /*
+         * ========================================
+         * CHECK BLOCK
+         * ========================================
+         */
+
+        const block =
+            await getBlockBetweenUsers(
+                userId,
+                otherUserId
+            );
+
+        if (block) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "This conversation is unavailable because one of you has blocked the other.",
             });
         }
 
@@ -870,6 +1025,12 @@ export const markMessagesAsRead = async (
                 },
             }
         );
+
+        /*
+         * ========================================
+         * RESPONSE
+         * ========================================
+         */
 
         return res.status(200).json({
             success: true,

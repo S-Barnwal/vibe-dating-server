@@ -11,6 +11,7 @@ import uploadRoutes from "./routes/upload.routes.js";
 import interactionRoutes from "./routes/interaction.routes.js";
 import matchRoutes from "./routes/match.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
+import blockRoutes from "./routes/block.routes.js";
 
 
 const app = express();
@@ -41,6 +42,7 @@ app.use(
 );
 app.use("/api/matches", matchRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/blocks", blockRoutes);
 
 
 
