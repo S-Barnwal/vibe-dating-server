@@ -213,10 +213,12 @@ export const getConversation = async (
                 /*
                  * Matched user's profile
                  */
+
                 otherUser: {
                     id: otherProfile.user._id.toString(),
 
-                    profileId: otherProfile._id.toString(),
+                    profileId:
+                        otherProfile._id.toString(),
 
                     name:
                         otherProfile.user.name,
@@ -268,8 +270,10 @@ export const getConversation = async (
                 /*
                  * Conversation information
                  */
+
                 conversation: {
-                    id: conversation._id.toString(),
+                    id:
+                        conversation._id.toString(),
 
                     participants:
                         conversation.participants.map(
@@ -281,9 +285,11 @@ export const getConversation = async (
                 /*
                  * Messages
                  */
+
                 messages:
                     messages.map((message) => ({
-                        id: message._id.toString(),
+                        id:
+                            message._id.toString(),
 
                         conversation:
                             message.conversation.toString(),
@@ -294,7 +300,8 @@ export const getConversation = async (
                         receiver:
                             message.receiver.toString(),
 
-                        text: message.text,
+                        text:
+                            message.text,
 
                         isRead:
                             message.isRead,
@@ -308,9 +315,6 @@ export const getConversation = async (
                         updatedAt:
                             message.updatedAt,
 
-                        /*
-                         * Used by mobile UI
-                         */
                         mine:
                             message.sender.toString() ===
                             userId.toString(),
@@ -327,6 +331,230 @@ export const getConversation = async (
             success: false,
             message:
                 "Unable to load conversation.",
+        });
+    }
+};
+
+/*
+ * ==========================================
+ * SEARCH MESSAGES
+ * ==========================================
+ */
+
+export const searchMessages = async (
+    req,
+    res
+) => {
+    try {
+        const userId = req.userId;
+
+        const {
+            userId: otherUserId,
+        } = req.params;
+
+        const query =
+            typeof req.query.q === "string"
+                ? req.query.q.trim()
+                : "";
+
+        /*
+         * ========================================
+         * AUTHENTICATION
+         * ========================================
+         */
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Authentication required.",
+            });
+        }
+
+        /*
+         * ========================================
+         * VALIDATE OTHER USER
+         * ========================================
+         */
+
+        if (!otherUserId) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Other user is required.",
+            });
+        }
+
+        if (
+            !mongoose.Types.ObjectId.isValid(
+                otherUserId
+            )
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Invalid user ID.",
+            });
+        }
+
+        /*
+         * ========================================
+         * VALIDATE SEARCH QUERY
+         * ========================================
+         */
+
+        if (!query) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Search query is required.",
+            });
+        }
+
+        if (query.length > 100) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Search query is too long.",
+            });
+        }
+
+        /*
+         * ========================================
+         * CHECK MATCH
+         * ========================================
+         */
+
+        const match = await areUsersMatched(
+            userId,
+            otherUserId
+        );
+
+        if (!match) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You can only search messages from your matches.",
+            });
+        }
+
+        /*
+         * ========================================
+         * FIND CONVERSATION
+         * ========================================
+         */
+
+        const conversation =
+            await Conversation.findOne({
+                participants: {
+                    $all: [
+                        userId,
+                        otherUserId,
+                    ],
+                },
+            });
+
+        if (!conversation) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    messages: [],
+                    count: 0,
+                },
+            });
+        }
+
+        /*
+         * ========================================
+         * ESCAPE REGEX
+         * ========================================
+         */
+
+        const escapedQuery =
+            query.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+
+        /*
+         * ========================================
+         * SEARCH MESSAGES
+         * ========================================
+         */
+
+        const messages =
+            await Message.find({
+                conversation:
+                    conversation._id,
+
+                text: {
+                    $regex: escapedQuery,
+                    $options: "i",
+                },
+            })
+                .sort({
+                    createdAt: 1,
+                })
+                .limit(100)
+                .lean();
+
+        /*
+         * ========================================
+         * RESPONSE
+         * ========================================
+         */
+
+        return res.status(200).json({
+            success: true,
+
+            data: {
+                messages:
+                    messages.map((message) => ({
+                        id:
+                            message._id.toString(),
+
+                        conversation:
+                            message.conversation.toString(),
+
+                        sender:
+                            message.sender.toString(),
+
+                        receiver:
+                            message.receiver.toString(),
+
+                        text:
+                            message.text,
+
+                        isRead:
+                            message.isRead,
+
+                        readAt:
+                            message.readAt,
+
+                        createdAt:
+                            message.createdAt,
+
+                        updatedAt:
+                            message.updatedAt,
+
+                        mine:
+                            message.sender.toString() ===
+                            userId.toString(),
+                    })),
+
+                count: messages.length,
+            },
+        });
+    } catch (error) {
+        console.error(
+            "Search messages error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Unable to search messages.",
         });
     }
 };
@@ -487,7 +715,8 @@ export const sendMessage = async (
 
             data: {
                 message: {
-                    id: message._id.toString(),
+                    id:
+                        message._id.toString(),
 
                     conversation:
                         message.conversation.toString(),
@@ -498,7 +727,8 @@ export const sendMessage = async (
                     receiver:
                         message.receiver.toString(),
 
-                    text: message.text,
+                    text:
+                        message.text,
 
                     isRead:
                         message.isRead,
