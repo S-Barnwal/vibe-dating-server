@@ -2,6 +2,7 @@ import express from "express";
 
 import {
   getBlockStatus,
+  getBlockedUsers,
   blockUser,
   unblockUser,
 } from "../controllers/block.controller.js";
@@ -10,10 +11,28 @@ import protect from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.get("/:userId/status", protect, getBlockStatus);
+router.get(
+  "/",
+  protect,
+  getBlockedUsers
+);
 
-router.post("/:userId", protect, blockUser);
+router.get(
+  "/:userId/status",
+  protect,
+  getBlockStatus
+);
 
-router.delete("/:userId", protect, unblockUser);
+router.post(
+  "/:userId",
+  protect,
+  blockUser
+);
+
+router.delete(
+  "/:userId",
+  protect,
+  unblockUser
+);
 
 export default router;
