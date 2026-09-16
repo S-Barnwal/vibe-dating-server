@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
-
+import compatibilityRoutes from "./routes/compatibility.routes.js";
 import connectDB from "./config/db.js";
 import connectCloudinary from "./config/cloudinary.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -32,6 +32,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/interactions", interactionRoutes);
+app.use(
+  "/api/compatibility",
+  compatibilityRoutes
+);
 
 app.get("/", (req, res) => {
   res.status(200).json({
