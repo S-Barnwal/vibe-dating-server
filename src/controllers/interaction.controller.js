@@ -1,5 +1,6 @@
 import Interaction from "../models/interaction.model.js";
 import Profile from "../models/Profile.js";
+import Match from "../models/Match.js";
 
 const createInteraction = async (req, res) => {
   try {
@@ -70,6 +71,9 @@ const createInteraction = async (req, res) => {
       });
     }
 
+    /*
+     * Save or update the current interaction.
+     */
     const interaction =
       await Interaction.findOneAndUpdate(
         {
@@ -89,12 +93,88 @@ const createInteraction = async (req, res) => {
         }
       );
 
-    const message =
-      req.interactionType === "like"
-        ? "Profile liked"
-        : req.interactionType === "pass"
-        ? "Profile passed"
-        : "Super like sent";
+    /*
+     * Match is only possible for Like or Super Like.
+     *
+     * Example:
+     *
+     * User A → Like → User B
+     * User B → Like → User A
+     *
+     * OR
+     *
+     * User A → Super Like → User B
+     * User B → Like → User A
+     */
+    let match = null;
+
+    if (
+      req.interactionType === "like" ||
+      req.interactionType === "superlike"
+    ) {
+      /*
+       * Check whether the other user has already
+       * liked or superliked the current user.
+       */
+      const reverseInteraction =
+        await Interaction.findOne({
+          fromUser: targetUserId,
+          toUser: fromUserId,
+          type: {
+            $in: ["like", "superlike"],
+          },
+        });
+
+      if (reverseInteraction) {
+        /*
+         * Always store the two users in the same order.
+         * This prevents duplicate matches such as:
+         *
+         * A + B
+         * B + A
+         */
+        const [user1, user2] = [
+          fromUserId,
+          targetUserId,
+        ].sort((a, b) =>
+          a.toString().localeCompare(
+            b.toString()
+          )
+        );
+
+        /*
+         * Create the match if it does not exist.
+         * If it already exists, return the existing one.
+         */
+        match = await Match.findOneAndUpdate(
+          {
+            user1,
+            user2,
+          },
+          {
+            user1,
+            user2,
+            matchedAt: new Date(),
+          },
+          {
+            new: true,
+            upsert: true,
+            setDefaultsOnInsert: true,
+          }
+        );
+      }
+    }
+
+    /*
+     * Response message.
+     */
+    const message = match
+      ? "It's a match! 💜"
+      : req.interactionType === "like"
+      ? "Profile liked"
+      : req.interactionType === "pass"
+      ? "Profile passed"
+      : "Super like sent";
 
     return res.status(200).json({
       success: true,
@@ -107,6 +187,19 @@ const createInteraction = async (req, res) => {
           createdAt: interaction.createdAt,
           updatedAt: interaction.updatedAt,
         },
+
+        /*
+         * If a mutual like exists, return match details.
+         * Otherwise match will be null.
+         */
+        match: match
+          ? {
+              id: match._id.toString(),
+              user1: match.user1.toString(),
+              user2: match.user2.toString(),
+              matchedAt: match.matchedAt,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -139,7 +232,6 @@ export const superlikeProfile = async (req, res) => {
 
   return createInteraction(req, res);
 };
-
 
 /*
  * Get profiles of people who liked the
@@ -191,7 +283,8 @@ export const getReceivedLikes = async (req, res) => {
     })
       .populate({
         path: "user",
-        select: "name isEmailVerified profileCompleted",
+        select:
+          "name isEmailVerified profileCompleted",
         match: {
           profileCompleted: true,
         },
@@ -300,12 +393,16 @@ export const getReceivedLikes = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Unable to load people who liked you.",
+      message:
+        "Unable to load people who liked you.",
     });
   }
 };
 
-
+/*
+ * Get profiles that the current user
+ * has liked or superliked.
+ */
 export const getSentLikes = async (req, res) => {
   try {
     const userId = req.userId;
@@ -321,14 +418,15 @@ export const getSentLikes = async (req, res) => {
      * Find profiles that the current user
      * has liked or superliked.
      */
-    const sentInteractions = await Interaction.find({
-      fromUser: userId,
-      type: {
-        $in: ["like", "superlike"],
-      },
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    const sentInteractions =
+      await Interaction.find({
+        fromUser: userId,
+        type: {
+          $in: ["like", "superlike"],
+        },
+      })
+        .sort({ createdAt: -1 })
+        .lean();
 
     if (sentInteractions.length === 0) {
       return res.status(200).json({
@@ -355,7 +453,8 @@ export const getSentLikes = async (req, res) => {
     })
       .populate({
         path: "user",
-        select: "name isEmailVerified profileCompleted",
+        select:
+          "name isEmailVerified profileCompleted",
         match: {
           profileCompleted: true,
         },

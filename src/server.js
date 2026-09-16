@@ -9,6 +9,8 @@ import authRoutes from "./routes/auth.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import interactionRoutes from "./routes/interaction.routes.js";
+import matchRoutes from "./routes/match.routes.js";
+
 
 const app = express();
 
@@ -36,6 +38,9 @@ app.use(
   "/api/compatibility",
   compatibilityRoutes
 );
+app.use("/api/matches", matchRoutes);
+
+
 
 app.get("/", (req, res) => {
   res.status(200).json({
