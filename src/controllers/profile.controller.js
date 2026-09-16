@@ -1541,3 +1541,238 @@ export const getPublicProfileById = async (req, res) => {
     });
   }
 };
+
+
+// ============================================================
+// BECAUSE YOU LIKE
+// ============================================================
+//
+// Finds the logged-in user's strongest shared interest
+// and returns discoverable profiles who share that interest.
+//
+// Example:
+// User interests:
+// [Travel, Music, Food]
+//
+// If Travel has the most matching profiles:
+//
+// Because You Like Travel
+//
+// Exact location is never returned.
+// ============================================================
+
+export const getBecauseYouLikeProfiles = async (
+  req,
+  res
+) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+    }
+
+    // ========================================================
+    // GET MY PROFILE
+    // ========================================================
+
+    const viewerProfile =
+      await Profile.findOne({
+        user: userId,
+      }).lean();
+
+    if (!viewerProfile) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Complete your profile first.",
+      });
+    }
+
+    // ========================================================
+    // MY INTERESTS
+    // ========================================================
+
+    const myInterests =
+      cleanInterests(
+        viewerProfile.interests
+      );
+
+    if (myInterests.length === 0) {
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          interest: null,
+          profiles: [],
+          count: 0,
+        },
+      });
+    }
+
+    // ========================================================
+    // FIND MATCH COUNT FOR EACH INTEREST
+    // ========================================================
+
+    const interestResults =
+      await Promise.all(
+        myInterests.map(async (interest) => {
+          const escapedInterest =
+            interest.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&"
+            );
+
+          const count =
+            await Profile.countDocuments({
+              user: {
+                $ne: userId,
+              },
+
+              isDiscoverable: true,
+
+              interests: {
+                $elemMatch: {
+                  $regex: `^${escapedInterest}$`,
+                  $options: "i",
+                },
+              },
+            });
+
+          return {
+            interest,
+            count,
+          };
+        })
+      );
+
+    // ========================================================
+    // PICK THE INTEREST WITH MOST MATCHING PROFILES
+    // ========================================================
+
+    const strongestInterest =
+      interestResults.reduce(
+        (best, current) => {
+          if (!best) {
+            return current;
+          }
+
+          return current.count > best.count
+            ? current
+            : best;
+        },
+        null
+      );
+
+    if (
+      !strongestInterest ||
+      strongestInterest.count === 0
+    ) {
+      return res.status(200).json({
+        success: true,
+
+        data: {
+          interest: null,
+          profiles: [],
+          count: 0,
+        },
+      });
+    }
+
+    // ========================================================
+    // FIND PROFILES FOR SELECTED INTEREST
+    // ========================================================
+
+    const escapedInterest =
+      strongestInterest.interest.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+    const profiles =
+      await Profile.find({
+        user: {
+          $ne: userId,
+        },
+
+        isDiscoverable: true,
+
+        interests: {
+          $elemMatch: {
+            $regex: `^${escapedInterest}$`,
+            $options: "i",
+          },
+        },
+      })
+        .populate(
+          "user",
+          "name isEmailVerified"
+        )
+        .sort({
+          lastActiveAt: -1,
+          createdAt: -1,
+        })
+        .limit(20)
+        .lean();
+
+    // ========================================================
+    // FORMAT PUBLIC PROFILES
+    // ========================================================
+
+    const publicProfiles =
+      profiles.map((profile) => {
+        let distanceKm = null;
+
+        if (
+          viewerProfile.location &&
+          profile.location
+        ) {
+          distanceKm =
+            calculateDistanceKm(
+              viewerProfile.location.latitude,
+              viewerProfile.location.longitude,
+              profile.location.latitude,
+              profile.location.longitude
+            );
+        }
+
+        return formatPublicProfile(
+          profile,
+          distanceKm
+        );
+      });
+
+    // ========================================================
+    // RESPONSE
+    // ========================================================
+
+    return res.status(200).json({
+      success: true,
+
+      data: {
+        interest:
+          strongestInterest.interest,
+
+        profiles:
+          publicProfiles,
+
+        count:
+          publicProfiles.length,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Because you like error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to load profiles based on your interests.",
+    });
+  }
+};
