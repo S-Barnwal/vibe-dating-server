@@ -196,28 +196,18 @@ export const getConversation = async (
 
         /*
          * ========================================
-         * CHECK BLOCK
-         * ========================================
-         */
-
-        const block =
-            await getBlockBetweenUsers(
-                userId,
-                otherUserId
-            );
-
-        if (block) {
-            return res.status(403).json({
-                success: false,
-                message:
-                    "This conversation is unavailable because one of you has blocked the other.",
-            });
-        }
-
-        /*
-         * ========================================
          * GET OTHER USER PROFILE
          * ========================================
+         *
+         * IMPORTANT:
+         * We do NOT block loading the conversation
+         * when one user has blocked the other.
+         *
+         * This allows:
+         * - Existing messages to remain visible
+         * - Match to remain visible
+         * - User to open the chat
+         * - User to unblock later
          */
 
         const otherProfile =
@@ -494,26 +484,6 @@ export const searchMessages = async (
                 success: false,
                 message:
                     "You can only search messages from your matches.",
-            });
-        }
-
-        /*
-         * ========================================
-         * CHECK BLOCK
-         * ========================================
-         */
-
-        const block =
-            await getBlockBetweenUsers(
-                userId,
-                otherUserId
-            );
-
-        if (block) {
-            return res.status(403).json({
-                success: false,
-                message:
-                    "This conversation is unavailable because one of you has blocked the other.",
             });
         }
 
