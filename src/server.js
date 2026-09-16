@@ -10,6 +10,7 @@ import profileRoutes from "./routes/profile.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import interactionRoutes from "./routes/interaction.routes.js";
 import matchRoutes from "./routes/match.routes.js";
+import chatRoutes from "./routes/chat.routes.js";
 
 
 const app = express();
@@ -39,6 +40,7 @@ app.use(
   compatibilityRoutes
 );
 app.use("/api/matches", matchRoutes);
+app.use("/api/chat", chatRoutes);
 
 
 
