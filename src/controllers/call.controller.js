@@ -59,7 +59,7 @@ const areUsersBlocked = async (userId, otherUserId) => {
 
 export const startCall = async (req, res) => {
   try {
-    const callerId = req.user._id;
+    const callerId = req.userId;
     const { receiverId } = req.body;
 
     if (!receiverId) {
@@ -166,7 +166,7 @@ if (receiverSocketId) {
 
 export const acceptCall = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.userId;
     const { callId } = req.params;
 
     const call = await Call.findById(callId);
@@ -197,10 +197,35 @@ export const acceptCall = async (req, res) => {
     call.answeredAt = new Date();
 
     await call.save();
+    const populatedCall = await Call.findById(
+  call._id
+)
+  .populate(
+    "caller",
+    "name username profileImage"
+  )
+  .populate(
+    "receiver",
+    "name username profileImage"
+  );
+    const io = req.app.get("io");
 
-    const populatedCall = await Call.findById(call._id)
-      .populate("caller", "name username profileImage")
-      .populate("receiver", "name username profileImage");
+const callerSocketId = getUserSocketId(
+  call.caller
+);
+
+if (callerSocketId) {
+  io.to(callerSocketId).emit(
+    "call_accepted",
+    {
+      call: populatedCall,
+    }
+  );
+}
+
+    
+
+
 
     return res.status(200).json({
       success: true,
@@ -226,7 +251,7 @@ export const acceptCall = async (req, res) => {
 
 export const rejectCall = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.userId;
     const { callId } = req.params;
 
     const call = await Call.findById(callId);
@@ -259,6 +284,21 @@ export const rejectCall = async (req, res) => {
 
     await call.save();
 
+    const io = req.app.get("io");
+
+const callerSocketId = getUserSocketId(
+  call.caller
+);
+
+if (callerSocketId) {
+  io.to(callerSocketId).emit(
+    "call_rejected",
+    {
+      call,
+    }
+  );
+}
+
     return res.status(200).json({
       success: true,
       message: "Call rejected",
@@ -283,7 +323,7 @@ export const rejectCall = async (req, res) => {
 
 export const endCall = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.userId;
     const { callId } = req.params;
 
     const call = await Call.findById(callId);
