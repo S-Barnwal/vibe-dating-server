@@ -1,4 +1,7 @@
 import "dotenv/config";
+import http from "http";
+import { Server } from "socket.io";
+import { registerCallSocket } from "./socket/call.socket.js";
 
 import express from "express";
 import cors from "cors";
@@ -18,6 +21,18 @@ import blockRoutes from "./routes/block.routes.js";
 const app = express();
 
 const PORT = process.env.PORT || 5000;
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  },
+});
+app.set("io", io);
+
+registerCallSocket(io);         
 
 connectDB();
 connectCloudinary();
@@ -55,6 +70,6 @@ app.get("/", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Vibe server running on port ${PORT}`);
 });

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import Call from "../models/Call.js";
 import Match from "../models/Match.js";
 import Block from "../models/Block.js";
+import { getUserSocketId } from "../socket/call.socket.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -132,10 +133,15 @@ export const startCall = async (req, res) => {
       startedAt: new Date(),
     });
 
-    const populatedCall = await Call.findById(call._id)
-      .populate("caller", "name username profileImage")
-      .populate("receiver", "name username profileImage");
+    const receiverSocketId = getUserSocketId(receiverId);
 
+if (receiverSocketId) {
+  const io = req.app.get("io");
+
+  io.to(receiverSocketId).emit("incoming_call", {
+    call: populatedCall,
+  });
+}
     return res.status(201).json({
       success: true,
       message: "Voice call started",
