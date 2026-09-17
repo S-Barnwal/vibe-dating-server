@@ -18,18 +18,14 @@ const areUsersMatched = async (
   userId,
   otherUserId
 ) => {
+  const userIds = [
+    userId.toString(),
+    otherUserId.toString(),
+  ].sort();
+
   const match = await Match.findOne({
-    $or: [
-      {
-        user1: userId,
-        user2: otherUserId,
-      },
-      {
-        user1: otherUserId,
-        user2: userId,
-      },
-    ],
-    status: "matched",
+    user1: userIds[0],
+    user2: userIds[1],
   });
 
   return !!match;
